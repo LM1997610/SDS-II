@@ -1,1 +1,2 @@
-# SDS-II
+## Statistical Methods in Data Science II
+
