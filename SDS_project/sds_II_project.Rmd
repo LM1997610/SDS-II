@@ -13,7 +13,7 @@ output:
 $$~$$ 
 <center> <b> Sapienza University of Rome</b> </center>
 <center> <i> Statistical Methods in Data Science & Laboratory II </i> </center>
-<center> January 2025 </center>
+<center> 2023/2024 </center>
 <br>
 <center> Luca Mazzucco: 1997610 </center>
 
