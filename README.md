@@ -1,3 +1,3 @@
-## Statistical Methods in Data Science II
+## Statistical Methods in Data Science & Laboratory II
 
-Here homeworks and final project for SDS II - A.Y. 2023-24
+Here homeworks and [final project](https://www.google.com/) for SDS II - A.Y. 2023-24
