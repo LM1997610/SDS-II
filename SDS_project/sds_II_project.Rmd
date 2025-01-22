@@ -1,0 +1,818 @@
+---
+author: "Luca"
+date: "2025-01-04"
+output: 
+  html_document:
+    toc: true
+    theme: united      # Set the depth of the table of contents
+    toc_depth: 4 
+    toc_float: false   # Enable a floating table of contents
+    css: styles.css
+---
+
+$$~$$ 
+<center> <b> Sapienza University of Rome</b> </center>
+<center> <i> Statistical Methods in Data Science & Laboratory II </i> </center>
+<center> January 2025 </center>
+<br>
+<center> Luca Mazzucco: 1997610 </center>
+
+$$~$$ 
+<center> <b> <font size="6"> Bayesian Mushroom Classifier 🍄🔍 </font> </b> </center>
+$$~$$
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Loading the Data:
+
+The dataset chosen is the **Mushroom dataset**, from [Kaggle](https://www.kaggle.com/datasets/prishasawhney/mushroom-dataset). It provides attributes and physical characteristics of 54035 mushrooms.
+
+The task proposed is a **binary classification problem**, aiming to determine whether a mushroom is `edible` or `poisonous`.
+
+The dataset is loaded through Kaggle API and first rows are displayed.
+
+```{r get_data, include=FALSE}
+
+library(jsonlite)
+library(httr2)
+library(readr)
+library(gridExtra)
+
+credentials <- read_json("kaggle.json")
+
+request(paste0("https://www.kaggle.com/api/v1/datasets/download/",
+               "prishasawhney/mushroom-dataset")) |> 
+  req_auth_basic(credentials$username, credentials$key) |>
+  req_perform(path = "mushroom-dataset.zip")
+
+```
+
+```{r load_data, message=FALSE}
+
+# from Kaggle → settings → API → download 'New Token' in working directory
+
+data <- read_csv("mushroom-dataset.zip")
+
+```
+
+
+```{r, results = "asis", echo = FALSE, warning = FALSE}
+
+library(kableExtra)
+
+kable(head(data, 5)) %>% 
+  kable_styling(latex_options = "striped", full_width = FALSE, font_size = 8) %>%
+  column_spec(1:NCOL(data), width = "10em")
+
+```
+
+```{r data_info, echo=F}
+
+duplicates <- duplicated(data)
+num_duplicates <- sum(duplicates)
+
+data <- data[!duplicates, ]
+
+cat(paste("Number of NaN values:", sum(colSums(is.na(data)))))
+cat(paste("Number of duplicates:", num_duplicates, "-> removed!", nrow(data)))
+cat("Dataset size: ", nrow(data), "x", ncol(data), "\n")
+
+```
+
+Here a brief description of each feature: 
+
+```{r features, echo=FALSE}
+
+cat("Features: \n")
+print(colnames(data))
+
+```
+
+- `cap-diameter`    → diameter of the mushroom cap (continuous)
+- `cap-shape`       → shape of the mushroom cap
+- `gill-attachment` → gill attach to the stem of the mushroom
+- `gill-color`      → color of the gills of the mushroom
+- `stem-height`     → height of the mushroom stem (continuous)
+- `stem-width`      → width of the mushroom stem (continuous)
+- `stem-color`      → color of the stem of the mushroom
+- `season`          → season of the mushroom 
+
+<br>
+
+<center> **EDA & Visualization** </center>
+
+<br>
+
+Inspecting the distribution of the dataset's features, plots for the **categorical variables**:
+
+<br>
+
+```{r, fig.height=6, fig.width=8, echo=FALSE, out.width="100%"}
+
+library(ggplot2)
+
+plot_cap_shape <- ggplot(data, aes(x = factor(`cap-shape`, levels = unique(`cap-shape`)), fill = factor(`cap-shape`))) +
+  geom_bar() + scale_x_discrete(labels = unique(data$`cap-shape`)) + labs(title = "cap-shape of Mushrooms") +
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5), 
+                         legend.position = "none", plot.title = element_text(hjust = 0.5)) + xlab('cap-shape') + ylab("Frequency")
+#########################################
+plot_gill_attachment <- ggplot(data, aes(x = factor(`gill-attachment`, levels = unique(`gill-attachment`)), fill = factor(`gill-attachment`))) +
+  geom_bar() + scale_x_discrete(labels = unique(data$`gill-attachment`)) + labs(title = "gill-attachment of Mushrooms") +
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5), 
+                         legend.position = "none", plot.title = element_text(hjust = 0.5)) + xlab('gill-attachment') + ylab("Frequency")
+#########################################
+plot_gill_color <- ggplot(data, aes(x = factor(`gill-color`, levels = unique(`gill-color`)), fill = factor(`gill-color`))) +
+  geom_bar() + scale_x_discrete(labels = unique(data$`gill-color`)) + labs(title = "gill-color of Mushrooms") +
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5), 
+                         legend.position = "none", plot.title = element_text(hjust = 0.5)) + xlab('gill-color') + ylab("Frequency")
+#########################################
+plot_stem_color <- ggplot(data, aes(x = factor(`stem-color`, levels = unique(`stem-color`)), fill = factor(`stem-color`))) +
+  geom_bar() + scale_x_discrete(labels = unique(data$`stem-color`)) + labs(title = "stem-color of Mushrooms") +
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5), 
+                         legend.position = "none", plot.title = element_text(hjust = 0.5)) + xlab('stem-color') + ylab("Frequency")
+#####################################àà
+#plot_season <- ggplot(data, aes(x = factor(`season`, levels = unique(`season`)), fill = factor(`season`))) +
+#  geom_bar() + scale_x_discrete(labels = unique(data$`season`)) + labs(title = "season of Mushrooms") +
+#  theme_minimal() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5), 
+#                         legend.position = "none", plot.title = element_text(hjust = 0.5)) + xlab('season')+ylab("Frequency")
+
+grid.arrange(plot_cap_shape,
+             plot_gill_attachment,
+             plot_gill_color,
+             #plot_season,
+             plot_stem_color, ncol = 2, nrow = 2)
+             
+```
+
+<br>
+
+Below are visualized the *density distributions* for **continuous variables** using the `highcharter` library.  
+The variables plotted include **cap-diameter**, **stem-height**, and **stem-width**.   
+For each of these variables, density plots are shown to compare the distributions between two classes: Class 0 (<span style='color:green'>Edible</span>) and Class 1 (<span style='color:red'>Poisonous</span>), with green and red lines respectively. 
+
+<br>
+
+
+```{r features_plots, fig.height= 3, fig.width=8, echo=FALSE, out.width="100%", message=FALSE, warning=FALSE}
+
+#########################
+library(highcharter)    #
+library(dplyr)          #
+#########################
+
+density_0 <- density(data$`cap-diameter`[data$class == 0])
+density_1 <- density(data$`cap-diameter`[data$class == 1])
+
+density_df_0 <- data.frame(x = density_0$x, y = density_0$y)
+density_df_1 <- data.frame(x = density_1$x, y = density_1$y)
+
+
+hchart(density_df_0, "line", hcaes(x = x, y = y), 
+       name = "Class 0 (Edible)", color = "green") %>%
+  hc_add_series(density_df_1, "line", hcaes(x = x, y = y), 
+      name = "Class 1 (Poisonous)", color = "red") %>%
+  hc_title(text = "Cap-Diameter Density by Class") %>%
+  hc_xAxis(title = list(text = "Cap-Diameter")) %>%
+  hc_yAxis(title = list(text = "Density")) %>%
+  hc_tooltip(shared = TRUE) %>%
+  hc_plotOptions(series = list(marker = list(enabled = FALSE)))
+
+########################################################################
+
+density_0 <- density(data$`stem-height`[data$class == 0])
+density_1 <- density(data$`stem-height`[data$class == 1])
+
+density_df_0 <- data.frame(x = density_0$x, y = density_0$y)
+density_df_1 <- data.frame(x = density_1$x, y = density_1$y)
+
+
+hchart(density_df_0, "line", hcaes(x = x, y = y), 
+       name = "Class 0 (Edible)", color = "green") %>%
+  hc_add_series(density_df_1, "line", hcaes(x = x, y = y), 
+      name = "Class 1 (Poisonous)", color = "red") %>%
+  hc_title(text = "Stem-Height Density by Class") %>%
+  hc_xAxis(title = list(text = "Stem-Height")) %>%
+  hc_yAxis(title = list(text = "Density")) %>%
+  hc_tooltip(shared = TRUE) %>%
+  hc_plotOptions(series = list(marker = list(enabled = FALSE)))
+
+########################################################################
+
+density_0 <- density(data$`stem-width`[data$class == 0])
+density_1 <- density(data$`stem-width`[data$class == 1])
+
+density_df_0 <- data.frame(x = density_0$x, y = density_0$y)
+density_df_1 <- data.frame(x = density_1$x, y = density_1$y)
+
+
+hchart(density_df_0, "line", hcaes(x = x, y = y), 
+       name = "Class 0 (Edible)", color = "green") %>%
+  hc_add_series(density_df_1, "line", hcaes(x = x, y = y), 
+      name = "Class 1 (Poisonous)", color = "red") %>%
+  hc_title(text = "Stem-Width Density by Class") %>%
+  hc_xAxis(title = list(text = "Stem-Width")) %>%
+  hc_yAxis(title = list(text = "Density")) %>%
+  hc_tooltip(shared = TRUE) %>%
+  hc_plotOptions(series = list(marker = list(enabled = FALSE)))
+
+```
+
+<br>
+
+**Correlations** between the features measured considering the Pearson coefficient:
+
+```{r correlations, out.width="100%", echo=F}
+
+hchart(round(cor(data[, c(1:9)], method = "pearson"), digits = 2), color = randomcoloR::randomColor()) %>%
+  hc_plotOptions(
+    series = list( borderColor = "#fcfbfa",
+                   borderWidth = 1,
+                   animation=(durtion=1000),
+                   dataLabels = list(enabled = TRUE) ))
+
+```
+
+<br>
+
+Let's see the distribution of the target variable across the dataset. 
+
+The classes appear reasonably balanced, with `Edible` and `Poisonous` represented quite fairly.
+
+```{r target_plot, echo=FALSE, warning=FALSE, fig.width = 8, fig.height = 3} 
+
+# Margins area
+par(mar=c(2,15,2,15) + 0.1)
+
+barplot(height = table(data$class)/nrow(data),
+        names.arg = c("Edible", "Poisonous"), 
+        main = "Target Distribution",
+        col = c("lightgreen", "firebrick"),
+        ylab = "Freq", ylim=c(0, 0.9) )
+
+grid(nx = NULL, ny = NULL, col = "gray", lty = "dotted")
+
+```
+
+
+<br>
+
+### Frequentist Baseline:
+
+Splitting data in Train (70%) and Test (30%) sets, the latter of which will be used to evaluate the performance of the models.
+
+```{r train_test_split, echo=FALSE}
+
+set.seed(123)  # 70% train, 30% test
+train_indices <- sample(seq_len(nrow(data)), size = 0.7 * nrow(data))  
+
+train_data <- data[train_indices, ]  
+test_data <- data[-train_indices, ]
+
+cat(paste("train_data:", dim(train_data)[1], dim(train_data)[2]))
+cat(paste(' test_data:', dim(test_data)[1], dim(test_data)[2]))
+```
+
+**Frequentist approach** → *Logistic Regression* with *glm*
+
+```{r train, echo=T}
+
+model <- glm(class ~ ., data = train_data, family = binomial)
+
+predictions <- predict(model, newdata = test_data, type = "response")
+```
+
+A logistic regression approach is initially chosen to assess the performance of standard machine learning methods.
+
+The model yielded poor results, achieving an accuracy of 63%.
+
+The aim is to examine whether the Bayesian analysis can improve upon this outcomes or,  at the very least, confirm them.
+
+```{r test, echo=FALSE}
+
+predictions_binary <- ifelse(predictions > 0.5, 1, 0)
+
+conf_matrix <- table(Predicted = predictions_binary, Actual = test_data$class)
+#print(conf_matrix)
+
+accuracy <- mean(predictions_binary == test_data$class)
+precision <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+recall <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+cat(paste("Accuracy:", round(accuracy, 4)))
+cat(paste("Precision:", round(precision, 4)))
+cat(paste("Recall:", round(recall, 4)))
+cat(paste("F1 Score:", round(f1_score, 4)))
+
+```
+
+Below are the coefficients obtained from the logistic regression model and their p-values:
+
+```{r coef, echo=FALSE}
+
+print(summary(model)$coef)
+
+```
+
+
+<br>
+
+**S-shaped Curve:**
+
+Here are presented the predictions – output probabilities from the logistic regression model – for each observation in the Test set.
+
+Plotting the probabilities in ascending order → **Sigmoid function** with typical "S-shape".
+
+Provides a visual representation of how confident the model is in its predictions:
+
+In this case the flatter curve indicates model uncertainty, while a sharp "S" curve suggests significant distinction between the two classes.
+
+
+```{r sigmoid_plot, echo=F, warning=F, fig.align='center'}
+
+library(tibble) 
+library(ggplot2)
+
+tibble(rank = 1:length(predictions),
+       prob = predictions[order(predictions, decreasing = FALSE)]) %>%
+  ggplot(aes(x = rank, y = prob)) + geom_point(size = 0.5, color = "blue") +
+  theme_bw() +labs(y = "Predicted Probabilities", x = "Test Data",
+                   title = "S-shaped Curve") +
+  theme( plot.margin = unit(c(1, 6, 1, 1), "cm"),  
+         plot.title = element_text(hjust = 0.5),  
+         panel.border = element_blank()          ) 
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r dtree, echo=FALSE, include=FALSE}
+
+library(caret)
+library(rpart)
+library(rpart.plot)
+
+tree_model <- rpart(class ~ ., data = train_data, method = "class")
+
+rpart.plot(tree_model, main = "Decision Tree Model")
+
+predictions <- predict(tree_model, newdata = test_data, type = "class")
+
+conf_matrix <- confusionMatrix(predictions, as.factor(test_data$'class'))
+
+accuracy <- conf_matrix$overall['Accuracy']
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+print(paste("Accuracy:", accuracy))
+print(paste("Precision:", precision))
+print(paste("Recall:", recall))
+print(paste("F1 Score:", f1_score))
+
+#summary(tree_model)
+
+```
+
+
+### JAGS - Just Another Gibbs Sampler
+
+#### Bayesian Logistic Regression Model:
+
+The target variable `class`, representing the binary response $Y_i$, is assumed to follow a Bernoulli distribution with probability of success $p_i$.
+
+<br>
+
+$$Y_i|p_i \sim \text{Bernoulli}(p_i), \ \ \ \ \ i=1,..., n$$
+<br>
+
+The logistic regression model states that the **logit** of the probability \( p_i \) - the natural logarithm of the odds of success - $~$
+is expressed as a linear combination of the predictor variables \( x_i \).
+
+So, the **logistic regression model** can be written as:
+
+
+$$ \text{logit}(p_i) = \log\left(\frac{p_i}{1 - p_i}\right) = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \cdots + \beta_k x_{ik} $$
+
+where:
+
+- \( p_i \) is the probability of success for observation \( i \),
+- \( \beta_0 \) is the intercept,
+- \( \beta_1, \beta_2, \ldots, \beta_k \) are the coefficients for the predictor variables,
+- \( x_{i1}, x_{i2}, \ldots, x_{ik} \) are the predictor variables for observation \( i \),
+-  \( k \) is the total number of features.
+
+<br>
+
+Note that the probability of success \( p_i \) can be expressed as follows.\
+This formulation also highlights that the **logit function** ensures the probability \( p_i \) lie within the interval $[0,1]$.
+
+$$ p_i = \frac{\exp\left(\beta_0 + \sum_{j=1}^k \beta_j x_{ij}\right)}{1 +   \exp\left(\beta_0 + \sum_{j=1}^k \beta_j x_{ij}\right)} = \frac{1}{1+\exp\left(-(\beta_0 + \sum_{j=1}^k \beta_j x_{ij})\right)}$$
+<br>
+
+The model is implemented using **RJags**.  
+Preparing the data in the format required by `RJags` and initializing the **model parameters**:
+
+```{r model_one, message=FALSE, warning=FALSE}
+
+library(R2jags)
+
+# --- Run JAGS --- #
+
+data.jags <- list("y" = as.vector(train_data$class), 
+                  "N" = nrow(train_data),
+                  "x1" = as.vector(train_data$"cap-diameter"), 
+                  "x2" = as.vector(train_data$"cap-shape"), 
+                  "x3" = as.vector(train_data$"gill-attachment"), 
+                  "x4" = as.vector(train_data$"gill-color"), 
+                  "x5" = as.vector(train_data$"stem-height"), 
+                  "x6" = as.vector(train_data$"stem-width"), 
+                  "x7" = as.vector(train_data$"stem-color"),
+                  "x8" = as.vector(train_data$"season"))
+
+params <- c("beta0", "beta1", "beta2", "beta3", 
+            "beta4", "beta5", "beta6", "beta7", "beta8")
+
+inits <- function() {list( beta0 = 0, beta1 = 0, beta2 = 0, beta3 = 0, 
+                           beta4 = 0, beta5 = 0, beta6 = 0, beta7 = 0, beta8 = 0) }
+
+```
+
+**Model Definition**:
+
+Choosing a prior on the vector of the regression coefficients:$\beta = (\beta_0, \beta_1, \beta_2, \beta_3, \beta_4, \beta_5, \beta_6, \beta_7, \beta_8)$
+
+The **beta prior parameters** are supposed to be distributed as Normal distribution:
+
+<br>
+
+$$ \beta_j \sim \text{Normal}(\mu=0, \sigma=0.001) \ \ \ \ j=0,...,8$$
+<br>
+
+```{r define_model, echo=T}
+
+# JAGS Model Definition
+
+jags_model <- "
+model {
+  # Likelihood
+  for (i in 1:N) {
+    y[i] ~ dbern(p[i])         # Binary outcome follows Bernoulli distribution
+    logit(p[i]) <- beta0 +     # Logistic regression model
+                   beta1 * x1[i] +
+                   beta2 * x2[i] +
+                   beta3 * x3[i] +
+                   beta4 * x4[i] +
+                   beta5 * x5[i] +
+                   beta6 * x6[i] +
+                   beta7 * x7[i] +
+                   beta8 * x8[i]   }
+  
+  # Priors for regression coefficients
+  
+  beta0 ~ dnorm(0,  0.001)        # Intercept
+  beta1 ~ dnorm(0,  0.001)        # Coefficients for features
+  beta2 ~ dnorm(0,  0.001)
+  beta3 ~ dnorm(0,  0.001)
+  beta4 ~ dnorm(0,  0.001)
+  beta5 ~ dnorm(0,  0.001)
+  beta6 ~ dnorm(0,  0.001)
+  beta7 ~ dnorm(0,  0.001)
+  beta8 ~ dnorm(0,  0.001)  }"
+
+writeLines(jags_model, "model_one.txt")  # Save the JAGS model in a .txt file
+
+```
+
+```{r fit_model, echo=T}
+
+myfirstjags <- jags(data=data.jags,              # data
+                    model.file="model_one.txt",  # model
+                    parameters.to.save=params,   # traking
+                    inits=inits,                         
+                    n.chains=3,
+                    n.iter=1000, 
+                    n.burnin=100)
+```
+
+
+```{r print_info, echo=F}
+print(myfirstjags)
+```
+
+The table summarizes the output for the JAGS model.\
+
+In particular:
+
+- *mu.vect* shows the average of the posterior distribution for each of the parameters.
+
+- *sd.vect* is standard deviation of the posterior, representing the uncertainty in the parameter estimate.
+
+- *Rhat* measures the convergence of the chains. For all parameters, Rhat is close to 1, meaning the chains have converged well.
+
+- *n.eff* is the effective number of samples to achieve the convergence → stationary region.
+
+
+<br>
+
+Below is a comparison of the estimated values of the Coefficients for the **Frequentist model** and the **Bayesian model** which are essentially completely similar to each other:
+
+```{r print_comp, echo=F}
+
+variab <- as.data.frame(myfirstjags$BUGSoutput$summary[, c("mean","sd")])
+jags_coefficients_adj <- variab$mean[1:length(variab$mean)-1]
+
+round( cbind(" jags_coef " = jags_coefficients_adj, 
+             " freq_coef " = model$coefficients), 6)
+
+```
+
+#### Predictions: Posterior Predictive
+
+Computing predictive density for new observations $(\tilde{y}_i)$ :
+
+
+$$f(\tilde{y}_i = \tilde{y}_i \mid y) = \int \pi(\beta \mid y) \ \ f(\tilde{y}_i, \beta) \ \ d\beta$$
+
+where:
+
+- $\pi(\beta \mid y)$: is the **posterior density** of the regression coefficients $(\beta = (\beta_0, \beta_1,\dots,)$, given observed data $y$.
+
+- $f(\tilde{y}_i, \beta)$: is the **joint density** of the future observation $(\tilde{y}_i)$ and the regression coefficients $\beta$
+
+<br>
+
+In practice we approximate the integral using samples from the **posterior distribution** (from JAGS) to generate samples of the predictive distribution: 
+
+<br>
+
+```{r predictive_post, echo=T}
+
+beta_est <- list("beta0" = myfirstjags$BUGSoutput$summary["beta0", "mean"],
+               "beta1" = myfirstjags$BUGSoutput$summary["beta1", "mean"],
+               "beta2" = myfirstjags$BUGSoutput$summary["beta2", "mean"],
+               "beta3" = myfirstjags$BUGSoutput$summary["beta3", "mean"],
+               "beta4" = myfirstjags$BUGSoutput$summary["beta4", "mean"],
+               "beta5" = myfirstjags$BUGSoutput$summary["beta5", "mean"],
+               "beta6" = myfirstjags$BUGSoutput$summary["beta6", "mean"],
+               "beta7" = myfirstjags$BUGSoutput$summary["beta7", "mean"],
+               "beta8" = myfirstjags$BUGSoutput$summary["beta8", "mean"])
+
+test_data$output_predictive <- apply(test_data, 1, function(x){
+ 
+ logit<-beta_est$beta0 + beta_est$beta1 * x["cap-diameter"] + 
+                         beta_est$beta2 * x["cap-shape"] + 
+                         beta_est$beta3 * x["gill-attachment"] + 
+                         beta_est$beta4 * x["gill-color"] + 
+                         beta_est$beta5 * x["stem-height"] + 
+                         beta_est$beta6 * x["stem-width"] + 
+                         beta_est$beta7 * x["stem-color"] + 
+                         beta_est$beta8 * x["season"]
+
+sigmoid_samples <- (1 / (1 + exp(-logit))) 
+y_pred <- rbinom(n = 1000, size = 1, prob = sigmoid_samples)
+
+predicted <- unique(y_pred)
+predicted <- predicted[which.max(tabulate(match(y_pred, predicted)))]
+
+return(predicted) })
+
+accuracy <- mean(test_data$output_predictive == test_data$class)
+cat(paste("Accuracy:", round(accuracy, 4)))
+
+```
+
+
+```{r plots, echo=F, warning=F, fig.width = 5, fig.height = 3} 
+
+conf_mtx <- as.data.frame(round(prop.table(table(test_data$class,
+                                    test_data$output_predictive)), digits = 3))
+
+info_dt <- data.frame("Accuracy"=mean(test_data$class==test_data$output_predictive),                                     "Error"=mean(test_data$class !=test_data$output_predictive))
+
+highchart() %>% 
+hc_chart(type = "column") %>%
+hc_title(text = "The Classifier") %>%
+hc_plotOptions(column = list(stacking = "normal")) %>%
+hc_add_series(name="Accuracy of the Model",
+              data = info_dt$Accuracy,
+              stack = "Accuracy") %>%
+hc_add_series(name="Error of the Model",
+              data = info_dt$Error,
+              stack = "Error") %>%
+hc_chart(options3d=list(enabled=TRUE, alpha=2, beta=-10, 
+                        depth=100, viewDistance=25)) %>% 
+hc_plotOptions(column=list(depth= 100))
+
+```
+
+
+#### Credible Intervals: Evaluation of feature relevance through Posterior Distributions:
+
+In this section credible intervals at 95% level are used to assess the **relevance of features** by examining the posterior distributions of the $\beta$ coefficients.
+
+For each parameter, the interval is computed, and its inclusion or exclusion of zero is evaluated to determine whether the feature has a meaningful contribution to the model.
+
+- If zero lies within the interval → the feature may be less relevant.
+- If zero is excluded → the feature likely influences the response variable.
+
+More formally:
+
+$$H_0: 0 \notin CI_{\beta_i}(0.95) \quad \text{vs} \quad H_1: 0 \in CI_{\beta_i}(0.95)$$
+
+The **Null Hypothesis**: states that the the feature of interest is relevant (zero is excluded from the 95% credible interval)
+
+The **Alternative Hypothesis**: asserts that the feature of interest is not relevant (zero is included in the 95% credible interval)
+
+<br>
+
+
+```{r ci, echo=T}
+
+create_density_plot <- function(data, parameter_name) {
+  
+  df <- data.frame(value = data[[parameter_name]])
+  xlim <- c(min(df), max(df))
+  
+  intervals <- round(cbind(quantile(df$value, 0.025, na.rm = TRUE), 
+                            quantile(df$value, 0.975, na.rm = TRUE)), 6)
+
+  inclusion_message <- if ((0 > intervals[1]) & (0 < intervals[2])) {"zero is included"} 
+                       else {"zero is excluded"}
+  
+  m <- paste()
+  cat("Parameter:", parameter_name, "->", inclusion_message, "\n")
+  cat(" - Lower Bound:", intervals[1], "\n")
+  cat(" - Upper Bound:", intervals[2], "\n\n")
+  
+  ggplot(df, aes(x = value)) +
+    geom_density(fill = "purple", alpha = 0.5) +
+    labs(title = paste("Posterior Density of", parameter_name), x =  parameter_name, y = NULL) +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5, size=10))+ 
+    geom_vline(xintercept = mean(df$value, na.rm = TRUE), linetype = "dotted", color = "black") +
+    geom_vline(xintercept = quantile(df$value, 0.025, na.rm = TRUE), linetype = "dotted", color = "red") +
+    geom_vline(xintercept = quantile(df$value, 0.975, na.rm = TRUE), linetype = "dotted", color = "red") +
+    coord_cartesian(xlim = xlim, expand = FALSE) }
+
+density_plots <- lapply(params, create_density_plot, data = myfirstjags$BUGSoutput$sims.list)
+
+```
+
+<br>
+
+Density plots visualize  **posterior distributions**, highlighting the credible intervals and means.
+
+Since zero is not contained in any of the credible intervals, it suggests that all the model parameters are statistically significant (all model features seem to have a significant effect on the response variable)
+
+<br>
+
+```{r show posterior distrib, echo=F}
+
+grid.arrange(grobs = density_plots, ncol = 3)
+
+```
+
+
+
+#### Convergence of MCMC:
+
+Here, are shown the univariate **traceplots** for the simulations of each parameter.  
+Traceplots are an essential tool in Bayesian modeling as they help assess the convergence of Markov Chains providing a visualization to check whether the chains have stabilized after the burn-in $(=100)$ period.
+
+From the plots below, it is evident that all three chains are stable and do not exhibit any discernible trends or drift.   Additionally, the chains converge to the same region of the parameter space, indicating that the **posterior distribution** is being sampled correctly and that the model is likely converging as expected.
+
+<br>
+
+```{r, fig.height=10, fig.width=10, echo=T}
+
+library(coda)
+
+ model_1=as.mcmc(myfirstjags)
+ par(mfrow=c(4,3))
+traceplot(model_1)
+
+```
+
+###  Alternative Model:
+
+The second model was designed by excluding variables with limited explanatory power for the target variable. 
+
+This approach aims to evaluate whether a **simpler model**, with fewer predictors, performs comparably to the original, more complex model. By focusing on the most relevant features, this model tests whether reduced complexity can achieve similar predictive results.
+
+<br>
+
+```{r alternative model, echo=T}
+
+data.jags <- list("y" = as.vector(train_data$class), 
+                  "N" = nrow(train_data),
+                  "x2" = as.vector(train_data$"cap-shape"), 
+                  "x5" = as.vector(train_data$"stem-height"),
+                  "x7" = as.vector(train_data$"stem-color"),
+                  "x8" = as.vector(train_data$"season") )
+
+                  # "x1" = as.vector(train_data$"cap-diameter"),
+                  # "x3" = as.vector(train_data$"gill-attachment"),
+                  # "x4" = as.vector(train_data$"gill-color"),
+                  # "x6" = as.vector(train_data$"stem-width"), 
+
+params <- c("beta0", "beta2", "beta5","beta7", "beta8")
+
+inits <- function() {list( beta0 = 0, beta2 = 0, beta5 = 0, beta7=0, beta8 = 0) }
+
+
+jags_model <- "
+model {
+  # Likelihood
+  for (i in 1:N) {
+    y[i] ~ dbern(p[i])         # Binary outcome follows Bernoulli distribution
+    logit(p[i]) <- beta0 +     # Logistic regression model
+                   beta2 * x2[i] +
+                   beta5 * x5[i] +
+                   beta7 * x7[i] +
+                   beta8 * x8[i]   }
+  
+  # Priors for regression coefficients
+  
+  beta0 ~ dnorm(0,  0.001)        # Intercept       
+  beta2 ~ dnorm(0,  0.001)        # Coefficients for features
+  beta5 ~ dnorm(0,  0.001)
+  beta7 ~ dnorm(0,  0.001)
+  beta8 ~ dnorm(0,  0.001)  }"
+
+writeLines(jags_model, "model_two.txt")  # Save the JAGS model in a .txt file
+
+secondjags <- jags(data=data.jags,              # data
+                   model.file="model_two.txt",  # model
+                   parameters.to.save=params,   # traking
+                   inits=inits,                         
+                   n.chains=3,
+                   n.iter=100, 
+                   n.burnin=10)
+```
+
+<br>
+
+```{r print_info2, echo=F}
+print(secondjags)
+```
+
+<br>
+
+#### Model comparison:
+
+To compare Bayesian models, the **Deviance Information Criterion** (DIC) is commonly used as an evaluation metric.  
+
+The DIC accounts for both *model fit* and *model complexity*, providing a balance between the two.  
+In general, the model with a **lower DIC value is preferred**, as it indicates better performance.
+
+DIC is calculated as the sum of the average deviance $D(\bar{\theta})$ and twice the effective number of parameters $p_D$ (computed from the variance of the deviance)
+
+<br>
+
+$$ \text{DIC} = \text{D}(\bar{\theta}) + 2p_D $$
+<br>
+
+```{r comparison, echo=F}
+
+cat("Bayesian Model 1 → DIC = ", myfirstjags$BUGSoutput$DIC, "\n")
+cat("Bayesian Model 2 → DIC = ", secondjags$BUGSoutput$DIC, "\n")
+
+```
+
+The first model proves to be slightly better.
+
+<br>
+
+```{r comparison2, echo=F, echo=FALSE, warning=FALSE, fig.width = 8, fig.height = 3} 
+
+dic_values <- c(myfirstjags$BUGSoutput$DIC, secondjags$BUGSoutput$DIC)
+
+model_labels <- c("Model 1", "Model 2")
+
+# Margins area
+par(mar=c(2,15,2,15) + 0.1)
+
+barplot(dic_values, 
+        names.arg = model_labels, 
+        col = c("skyblue", "lightgreen"), 
+        main = "DIC Comparison", 
+        ylab = "DIC", ylim=c(0, 55000),
+        border = "white")
+
+grid()
+
+```
+
+
+
+
+
+
+
+
+
+

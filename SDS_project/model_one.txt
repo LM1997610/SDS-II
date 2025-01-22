@@ -1,0 +1,26 @@
+
+model {
+  # Likelihood
+  for (i in 1:N) {
+    y[i] ~ dbern(p[i])         # Binary outcome follows Bernoulli distribution
+    logit(p[i]) <- beta0 +     # Logistic regression model
+                   beta1 * x1[i] +
+                   beta2 * x2[i] +
+                   beta3 * x3[i] +
+                   beta4 * x4[i] +
+                   beta5 * x5[i] +
+                   beta6 * x6[i] +
+                   beta7 * x7[i] +
+                   beta8 * x8[i]   }
+  
+  # Priors for regression coefficients
+  
+  beta0 ~ dnorm(0,  0.001)        # Intercept
+  beta1 ~ dnorm(0,  0.001)        # Coefficients for features
+  beta2 ~ dnorm(0,  0.001)
+  beta3 ~ dnorm(0,  0.001)
+  beta4 ~ dnorm(0,  0.001)
+  beta5 ~ dnorm(0,  0.001)
+  beta6 ~ dnorm(0,  0.001)
+  beta7 ~ dnorm(0,  0.001)
+  beta8 ~ dnorm(0,  0.001)  }
